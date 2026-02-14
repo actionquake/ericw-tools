@@ -20,6 +20,7 @@
 #include <light/light.hh>
 
 #include <cstdint>
+#include <fstream>
 #include <iostream>
 #include <fmt/chrono.h>
 
@@ -375,6 +376,8 @@ light_settings::light_settings()
           &experimental_group, "writes e5bgr9 data into the bsp itself"},
       world_units_per_luxel{
           this, "world_units_per_luxel", 0, 0, 1024, &output_group, "enables output of DECOUPLED_LM BSPX lump"},
+      split_lightmap{this, "split_lightmap", false, &output_group,
+          "write lightmap data to external .lm file (requires -world_units_per_luxel)"},
       litonly{this, "litonly", false, &output_group, "only write .lit file, don't modify BSP"},
       nolights{this, "nolights", false, &output_group, "ignore light entities (only sunlight/minlight)"},
       facestyles{this, "facestyles", 4, &output_group, "max amount of styles per face; requires BSPX lump if > 4"},
@@ -544,6 +547,10 @@ void light_settings::light_postinitialize(int argc, const char **argv)
     // upgrade to uint16 if facestyles is specified
     if (light_options.facestyles.is_changed() && !light_options.compilerstyle_max.is_changed()) {
         light_options.compilerstyle_max.set_value(INVALID_LIGHTSTYLE, settings::source::COMMANDLINE);
+    }
+
+    if (split_lightmap.value() && !world_units_per_luxel.is_changed()) {
+        FError("-split_lightmap requires -world_units_per_luxel\n");
     }
 }
 
@@ -1372,6 +1379,21 @@ int light_main(int argc, const char **argv)
         if (light_options.write_litfile & lightfile_t::lit2) {
             return 0; // run away before any files are written
         }
+    }
+
+    /* Write external lightmap file and strip lightmap data from BSP */
+    if (light_options.split_lightmap.value()) {
+        fs::path lmpath = source;
+        lmpath.replace_extension(".lm");
+        std::ofstream lmfile(lmpath, std::ios_base::out | std::ios_base::binary);
+        if (!lmfile) {
+            Error("Could not write {}", lmpath);
+        }
+        const char magic[4] = {'Q', 'L', 'M', 0x01};
+        lmfile.write(magic, 4);
+        lmfile.write((const char *)bsp.dlightdata.data(), bsp.dlightdata.size());
+        logging::print("Written {} lightmap bytes to {}\n", bsp.dlightdata.size(), lmpath);
+        bsp.dlightdata.clear();
     }
 
     /* -novanilla + internal lighting = no grey lightmap */

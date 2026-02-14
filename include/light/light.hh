@@ -417,6 +417,7 @@ public:
     setting_func hdr;
     setting_func bspxhdr;
     setting_scalar world_units_per_luxel;
+    setting_bool split_lightmap;
     setting_bool litonly;
     setting_bool nolights;
     setting_int32 facestyles;
